@@ -1,0 +1,12 @@
+@import "tailwindcss";
+
+/* Your Neo-Brutalist Global Styles */
+:root {
+  background-color: #0a0a0a;
+  color: #f0f0f0;
+}
+
+body {
+  margin: 0;
+  font-family: 'Inter', system-ui, Avenir, Helvetica, Arial, sans-serif;
+}
