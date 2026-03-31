@@ -1,5 +1,6 @@
 from rest_framework import serializers
 from .models import File, AuditLog, FileVersion
+from django.contrib.auth import get_user_model
 
 class FileSerializer(serializers.ModelSerializer):
     class Meta:
@@ -54,3 +55,22 @@ class FileDetailSerializer(serializers.ModelSerializer):
     class Meta:
         model = File
         fields = ['id', 'display_name', 'owner_username', 'upload_date', 'versions']
+
+User = get_user_model()
+
+class UserSerializer(serializers.ModelSerializer):
+    password = serializers.CharField(write_only=True)
+
+    class Meta:
+        model = User
+        fields = ('id', 'username', 'email', 'password', 'role')
+
+    def create(self, validated_data):
+        # Create user with hashed password
+        user = User.objects.create_user(
+            username=validated_data['username'],
+            email=validated_data.get('email', ''),
+            password=validated_data['password'],
+            role=validated_data.get('role', 'USER') # Defaults to USER per your RBAC
+        )
+        return user

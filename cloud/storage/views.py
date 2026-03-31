@@ -1,13 +1,32 @@
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.parsers import MultiPartParser
-from rest_framework.permissions import IsAuthenticated
 from .serializers import FileSerializer, AuditLogSerializer, FileDetailSerializer, FileSummarySerializer
 from secure_cloud.services.file_service import FileService
 from django.http import HttpResponse
 from .models import AuditLog, File, FileShare
 from django.contrib.auth import get_user_model
 from django.db.models import Q
+from users.models import User
+from rest_framework import status, generics
+from rest_framework.permissions import AllowAny, IsAuthenticated
+from .serializers import UserSerializer
+
+class RegisterView(generics.CreateAPIView):
+    queryset = User.objects.all()
+    permission_classes = (AllowAny,)
+    serializer_class = UserSerializer
+
+class UserMeView(APIView):
+    """
+    Returns the current user's profile. 
+    Useful for the frontend to verify identity and role.
+    """
+    permission_classes = (IsAuthenticated,)
+
+    def get(self, request):
+        serializer = UserSerializer(request.user)
+        return Response(serializer.data)
 
 import logging
 

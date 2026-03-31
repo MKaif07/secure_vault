@@ -1,15 +1,23 @@
 import React, { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { ShieldAlert } from 'lucide-react';
+import { useNavigate } from 'react-router-dom'
 
 export default function Login() {
   const [creds, setCreds] = useState({ username: '', password: '' });
   const { login } = useAuth();
+  const navigate = useNavigate();
 
-  const handleSubmit = (e) => {
-    e.preventDefault();
-    login(creds.username, creds.password);
-  };
+  const handleSubmit = async (e) => {
+  e.preventDefault();
+  const result = await login(creds.username, creds.password);
+  
+  if (!result.success) {
+    alert(result.message); // High-contrast Neo-Brutalist alert or Toast
+  } else {
+    navigate("/"); // Move to the vault on success
+  }
+};
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-vault-black p-4">

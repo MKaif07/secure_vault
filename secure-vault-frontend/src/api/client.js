@@ -20,11 +20,19 @@ const api = axios.create({
 // });
 
 api.interceptors.request.use((config) => {
+  // Grab the LATEST token saved during the login process
   const token = localStorage.getItem('vault_token');
+  
   if (token) {
     config.headers.Authorization = `Basic ${token}`;
+    console.log("Outgoing Request Auth: Secure");
+  } else {
+    console.warn("Outgoing Request Auth: MISSING (Sending as Guest)");
   }
+  
   return config;
+}, (error) => {
+  return Promise.reject(error);
 });
 
 export default api;
