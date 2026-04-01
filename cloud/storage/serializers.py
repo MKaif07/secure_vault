@@ -76,15 +76,30 @@ class UserSerializer(serializers.ModelSerializer):
         )
         return user
     
-class FileShareSerializer(serializers.ModelSerializer):
-    expires_in_hours = serializers.IntegerField(write_only=True, min_value=1, max_value=168) # Max 1 week
+from rest_framework import serializers
+from django.contrib.auth import get_user_model
+from .models import FileShare
 
+User = get_user_model()
+
+class FileShareSerializer(serializers.ModelSerializer):
+    # We accept email from the frontend, but it's not a field in the model
+    email = serializers.EmailField(write_only=True)
+    
     class Meta:
         model = FileShare
-        fields = ['id', 'file', 'shared_with', 'expires_in_hours', 'access_token', 'expires_at']
-        read_only_fields = ['id', 'access_token', 'expires_at']
+        fields = ['email', 'expires_at', 'access_token', 'is_revoked']
+        read_only_fields = ['access_token', 'is_revoked']
+
+    def validate_email(self, value):
+        """Check if the recipient user actually exists in the system."""
+        try:
+            return User.objects.get(email=value)
+        except User.DoesNotExist:
+            raise serializers.ValidationError("Recipient user with this email not found.")
 
     def create(self, validated_data):
-        hours = validated_data.pop('expires_in_hours')
-        validated_data['expires_at'] = timezone.now() + timezone.timedelta(hours=hours)
+        # Swap the 'email' field for the 'shared_with' User object
+        recipient_user = validated_data.pop('email')
+        validated_data['shared_with'] = recipient_user
         return super().create(validated_data)

@@ -13,6 +13,7 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.decorators import action
 from .serializers import UserSerializer, FileShareSerializer
 from django.utils import timezone
+from datetime import timedelta
 
 class RegisterView(generics.CreateAPIView):
     queryset = User.objects.all()
@@ -307,9 +308,11 @@ class FileViewSet(viewsets.ModelViewSet):
         """
         SECURITY: Users can only see files they own OR files shared with them.
         """
+        user = self.request.user
         return File.objects.filter(
-            Q(owner=self.request.user) | 
-            Q(shares__shared_with=self.request.user)
+            # Q(owner=self.request.user) | 
+            Q(owner=user) | 
+            Q(shares__shared_with=user, shares__is_revoked=False)
         ).distinct().order_by('-upload_date')
 
     def get_serializer_class(self):
@@ -319,81 +322,89 @@ class FileViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=['get'], url_path='download')
     def download(self, request, pk=None):
-        """
-        COMPLETE SECURE RETRIEVAL LOGIC
-        Checks ownership, share status, and expiration before decryption.
-        """
+        # 1. Fetch object using the secured queryset
+        # This already guarantees the user has basic access rights
+        file_instance = self.get_object() 
+        
+        # 2. Granular Access Check (The "Kill-Switch" Logic)
+        is_owner = file_instance.owner == request.user
+        
+        # Explicit check for active share
+        active_share = FileShare.objects.filter(
+            file=file_instance,
+            shared_with=request.user,
+            is_revoked=False
+        ).filter(
+            Q(expires_at__gt=timezone.now()) | Q(expires_at__isnull=True)
+        ).first() # Use .first() to check existence and retrieve token logic
+
+        # If user is not the owner AND there's no valid share, block them
+        if not is_owner and not active_share:
+            return Response({"error": "ACCESS DENIED: Link revoked or expired"}, status=403)
+        # 3. Token Validation (If provided in URL params)
+        provided_token = request.query_params.get('token')
+        if provided_token and str(active_share.access_token) != provided_token:
+            return Response({"error": "INVALID TOKEN"}, status=403)
+
+        # 4. Decryption and Streaming
         try:
-            file_metadata = self.get_object() # Fetches by ID + get_queryset security
-            token = request.query_params.get('token')
-
-            # 1. Access Control Logic
-            is_owner = file_metadata.owner == request.user
-            
-            # Check if a valid, unrevoked, and unexpired share exists
-            is_shared = FileShare.objects.filter(
-                file=file_metadata,
-                shared_with=request.user,
-                is_revoked=False
-            ).filter(
-                Q(expires_at__gt=timezone.now()) | Q(expires_at__isnull=True)
-            ).exists()
-
-            # If user provided a specific share token, validate that too
-            if token:
-                is_shared = is_shared and FileShare.objects.filter(access_token=token).exists()
-
-            if not (is_owner or is_shared):
-                return Response({"error": "ACCESS DENIED: Unauthorized or Link Expired"}, status=403)
-
-            # 2. Cryptographic Retrieval via Service
             service = FileService()
             version_num = request.query_params.get('v')
-            
-            # This calls your AES-256 GCM decryption logic
+            # Ensure your service layer handles the file_instance properly
             file_bytes, filename = service.download_and_decrypt(
                 request.user, 
-                file_metadata.id, 
+                file_instance.id, 
                 version_number=version_num
             )
 
             if not file_bytes:
-                return Response({"error": "DECRYPTION FAILURE: Payload missing on disk"}, status=404)
+                return Response({"error": "File payload missing"}, status=404)
 
-            # 3. Audit Logging
+            # Audit Log
             AuditLog.objects.create(
                 user=request.user,
                 action='DOWNLOAD',
-                file_id=str(file_metadata.id),
+                file_id=str(file_instance.id),
                 ip_address=request.META.get('REMOTE_ADDR')
             )
 
-            # 4. Binary Stream Response
             response = HttpResponse(file_bytes, content_type='application/octet-stream')
             response['Content-Disposition'] = f'attachment; filename="{filename}"'
             return response
 
-        except File.DoesNotExist:
-            return Response({"error": "File not found"}, status=404)
+        except Exception as e:
+            # Don't leak specific system errors in production, but good for your debugging
+            return Response({"error": f"Decryption Error: {str(e)}"}, status=500)
 
     @action(detail=True, methods=['post'], url_path='share')
     def share(self, request, pk=None):
-        """
-        Logic to create a new share record for a recipient.
-        """
         file_obj = self.get_object()
+        
         if file_obj.owner != request.user:
             return Response({"error": "Only the owner can share this file"}, status=403)
 
-        serializer = FileShareSerializer(data=request.data)
+        # Calculate expiry if the frontend sends 'expires_in_hours'
+        hours = request.data.get('expires_in_hours', 24)
+        expiry_date = timezone.now() + timedelta(hours=int(hours))
+
+        # Inject expiry into the data before serializing
+        data = request.data.copy()
+        data['expires_at'] = expiry_date
+
+        serializer = FileShareSerializer(data=data)
         if serializer.is_valid():
-            serializer.save(file=file_obj, shared_by=request.user)
+            # The serializer.save() will now use the user object from validate_email
+            share_instance = serializer.save(file=file_obj, shared_by=request.user)
             
+            # Audit Logging
             AuditLog.objects.create(
                 user=request.user,
                 action='SHARE_CREATED',
                 file_id=str(file_obj.id),
                 ip_address=request.META.get('REMOTE_ADDR')
             )
-            return Response(serializer.data, status=201)
+            
+            return Response(FileShareSerializer(share_instance).data, status=201)
+        
+        # This will now return "Recipient user with this email not found" if it fails
         return Response(serializer.errors, status=400)

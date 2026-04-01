@@ -69,20 +69,18 @@ class FileService:
     def download_and_decrypt(self, user, file_id, version_number=None):
         try:
             # 1. Permission Check
-            file_record = File.objects.get(
-                Q(id=file_id, owner=user) | 
-                Q(id=file_id, shares__shared_with=user, shares__access_level='DOWNLOADER')
-            )
+            file_record = File.objects.get(Q(id=file_id, owner=user))
+            # |Q(id=file_id, shares__shared_with=user, shares__access_level='DOWNLOADER'))
 
             # 2. Get Specific Version or Latest
             if version_number:
                 version = file_record.versions.get(version_number=version_number)
             else:
                 version = file_record.versions.latest('version_number')
-            
             with open(version.storage_path, 'rb') as f:
                 ciphertext = f.read()
 
+            print("VERSION:", version_number)
             current_checksum = self.crypto.generate_checksum(ciphertext)
             print(f"DB Checksum: {version.checksum}")
             print(f"File Checksum: {current_checksum}")

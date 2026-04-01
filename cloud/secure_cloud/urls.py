@@ -21,15 +21,16 @@ from storage.views import RegisterView, UserMeView
 urlpatterns = [
     path('admin/', admin.site.urls),
     path('api/files/', include('storage.urls')),
-    # 1. The Schema (The machine-readable JSON file)
+    # The Schema (The machine-readable JSON file)
     path('api/schema/', SpectacularAPIView.as_view(), name='schema'),
     
-    # 2. The Swagger UI (The interactive page)
-    path('api/docs/', SpectacularSwaggerView.as_view(url_name='schema'), name='swagger-ui'),
-    
-    # 3. Optional: Redoc (A cleaner, read-only documentation view)
-    path('api/redoc/', SpectacularRedocView.as_view(url_name='schema'), name='redoc'),
-
+    # AUTH
     path('api/auth/register/', RegisterView.as_view(), name='auth_register'),
     path('api/auth/me/', UserMeView.as_view(), name='auth_me'),
+    # The Swagger UI
+    path('api/docs/', SpectacularSwaggerView.as_view(url_name='schema'), name='swagger-ui'),
+    
+    # Optional: Redoc
+    path('api/redoc/', SpectacularRedocView.as_view(url_name='schema'), name='redoc'),
+
 ]

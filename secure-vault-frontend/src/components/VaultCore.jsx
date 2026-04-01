@@ -8,10 +8,19 @@ import {
 } from "@tanstack/react-query";
 import { fileService } from "../api/fileService";
 import { Upload, Shield, Loader2, Search, FileText } from "lucide-react";
+import ShareModal from "./ShareModal";
 
 export default function VaultCore() {
   const [search, setSearch] = useState("");
   const queryClient = new QueryClient();
+
+  const [isShareModalOpen, setShareModalOpen] = useState(false);
+  const [selectedFile, setSelectedFile] = useState(null);
+
+  const handleOpenShare = (file) => {
+    setSelectedFile(file);
+    setShareModalOpen(true);
+  };
 
   // 1. Fetch Logic (React Query)
   const {
@@ -119,10 +128,19 @@ export default function VaultCore() {
                 {file.display_name || "Unnamed File"}
               </h3>
               <div className="mt-4 flex gap-2">
-                <button 
-                onClick={()=> fileService.downloadFile(file.id, file.display_name)}
-                className="flex-1 bg-vault-accent text-black text-[10px] font-black py-2 uppercase hover:bg-white transition-colors">
+                <button
+                  onClick={() =>
+                    fileService.downloadFile(file.id, file.display_name)
+                  }
+                  className="flex-1 bg-vault-accent text-black text-[10px] font-black py-2 uppercase hover:bg-white transition-colors"
+                >
                   Retrieve
+                </button>
+                <button
+                  onClick={() => handleOpenShare(file)}
+                  className="px-3 border border-vault-accent text-vault-accent text-[10px] font-black uppercase hover:bg-red-900 hover:border-red-900 transition-colors"
+                >
+                  Share
                 </button>
                 <button className="px-3 border border-vault-accent text-vault-accent text-[10px] font-black uppercase hover:bg-red-900 hover:border-red-900 transition-colors">
                   Delete
@@ -137,6 +155,11 @@ export default function VaultCore() {
             </p>
           </div>
         )}
+        <ShareModal
+          file={selectedFile}
+          isOpen={isShareModalOpen}
+          onClose={() => setShareModalOpen(false)}
+        />
       </div>
     </div>
   );
