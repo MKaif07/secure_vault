@@ -452,28 +452,56 @@ class FileViewSet(viewsets.ModelViewSet):
         if file_obj.owner != request.user:
             return Response({"error": "Only the owner can share this file"}, status=403)
 
-        # Calculate expiry if the frontend sends 'expires_in_hours'
+        # Set expiry logic (default 24h)
         hours = request.data.get('expires_in_hours', 24)
         expiry_date = timezone.now() + timedelta(hours=int(hours))
 
-        # Inject expiry into the data before serializing
         data = request.data.copy()
         data['expires_at'] = expiry_date
 
         serializer = FileShareSerializer(data=data)
         if serializer.is_valid():
-            # The serializer.save() will now use the user object from validate_email
+            # Save returns the FileShare instance
             share_instance = serializer.save(file=file_obj, shared_by=request.user)
             
-            # Audit Logging
             AuditLog.objects.create(
                 user=request.user,
                 action='SHARE_CREATED',
                 file_id=str(file_obj.id),
                 ip_address=request.META.get('REMOTE_ADDR')
             )
-            
             return Response(FileShareSerializer(share_instance).data, status=201)
         
-        # This will now return "Recipient user with this email not found" if it fails
         return Response(serializer.errors, status=400)
+
+    @action(detail=True, methods=['get'], url_path='shares')
+    def list_shares(self, request, pk=None):
+        """Used by the React Modal to see who to revoke."""
+        file_obj = self.get_object()
+        # Only show active, non-expired shares
+        active_shares = file_obj.shares.filter(
+            is_revoked=False, 
+            expires_at__gt=timezone.now()
+        )
+        serializer = FileShareSerializer(active_shares, many=True)
+        return Response(serializer.data)
+
+    @action(detail=True, methods=['post'], url_path='revoke')
+    def revoke(self, request, pk=None):
+        """The Kill Switch."""
+        share_id = request.data.get('share_id')
+        try:
+            # Security check: Ensure the requester owns the file associated with this share
+            share = FileShare.objects.get(id=share_id, file__owner=request.user)
+            share.is_revoked = True
+            share.save()
+
+            AuditLog.objects.create(
+                user=request.user,
+                action='SHARE_REVOKED',
+                file_id=str(share.file.id),
+                ip_address=request.META.get('REMOTE_ADDR')
+            )
+            return Response({"status": "Access Terminated Successfully"}, status=200)
+        except FileShare.DoesNotExist:
+            return Response({"error": "Share record not found or unauthorized"}, status=404)

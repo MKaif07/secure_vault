@@ -60,6 +60,9 @@ class FileShare(models.Model):
     is_revoked = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
 
+    class Meta:
+        unique_together = ('file', 'shared_with')
+        
     @property
     def is_active(self):
         # Ensure timezone is imported from django.utils
