@@ -13,58 +13,64 @@ class FileService:
         if not os.path.exists(self.storage_base):
             os.makedirs(self.storage_base)
 
-    def upload_and_encrypt(self, user, uploaded_file):
-        # 1. Check if a file with this name already exists for THIS user
-        existing_file = File.objects.filter(owner=user, display_name=uploaded_file.name).first()
+    def upload_and_encrypt(self, user, file_obj, existing_file_id=None):
+        try:
+            # 1. Database Record & Versioning Logic
+            if existing_file_id:
+                file_record = File.objects.get(id=existing_file_id)
+                # Find the highest existing version number
+                last_version = file_record.versions.order_by('-version_number').first()
+                version_num = (last_version.version_number + 1) if last_version else 1
+            else:
+                # First time upload
+                file_record = File.objects.create(
+                    owner=user, 
+                    display_name=file_obj.name
+                )
+                version_num = 1
 
-        if existing_file:
-            # Re-use the existing file record
-            file_record = existing_file
-            # Find the latest version number and increment it
-            try :
-                last_version_obj = file_record.versions.latest('version_number')
-                new_version_number = last_version_obj.version_number + 1
-            except FileVersion.DoesNotExist:
-                new_version_number = 1
-        else:
-            # Create the top-level File record ONLY if it doesn't exist
-            file_record = File.objects.create(
-                owner=user,
-                display_name=uploaded_file.name,
+            # 2. Cryptography Setup
+            dek = self.crypto.generate_dek()
+            # Ensure wrapped_dek is stored as a string or bytes based on your model
+            wrapped_dek = self.crypto.encrypt_dek(dek)
+            if isinstance(wrapped_dek, bytes):
+                wrapped_dek = wrapped_dek.decode('utf-8')
+            
+            # 3. Read and Encrypt content
+            file_obj.seek(0) 
+            file_data = file_obj.read()
+            nonce, ciphertext = self.crypto.encrypt_file_data(file_data, dek)
+
+            # Generate integrity checksum for the CIPHERTEXT (Harden against bit-flipping)
+            file_checksum = self.crypto.generate_checksum(ciphertext)
+                    
+            # 4. Physical Storage
+            # Generate a unique filename using UUID and versioning
+            storage_filename = f"{file_record.id}_v{version_num}.enc"
+            storage_path = os.path.join(self.storage_base, storage_filename)
+            
+            # Ensure directory exists
+            os.makedirs(self.storage_base, exist_ok=True)
+            
+            with open(storage_path, 'wb') as f:
+                f.write(ciphertext)
+
+            # 5. Create the Version record linked to our file_record
+            FileVersion.objects.create(
+                file=file_record,
+                version_number=version_num,
+                storage_path=storage_path,
+                checksum=file_checksum,
+                file_nonce=nonce,
+                encrypted_dek=wrapped_dek
             )
-            new_version_number = 1
 
-        # 2. Cryptography Setup
-        dek = self.crypto.generate_dek()
-        wrapped_dek = self.crypto.encrypt_dek(dek)
-        
-        # 3. Read and Encrypt content
-        uploaded_file.seek(0) 
-        file_data = uploaded_file.read()
-        nonce, ciphertext = self.crypto.encrypt_file_data(file_data, dek)
+            return file_record
 
-        file_checksum = self.crypto.generate_checksum(ciphertext)
-        print(f"DEBUG: Generated Checksum during upload: {file_checksum}")
-                
-        # 4. Physical Storage
-        # We use the version number in the filename to distinguish blobs
-        storage_filename = f"{file_record.id}_v{new_version_number}.enc"
-        storage_path = os.path.join(self.storage_base, storage_filename)
-        
-        with open(storage_path, 'wb') as f:
-            f.write(ciphertext)
-
-        # 5. Create the Version record linked to our file_record
-        FileVersion.objects.create(
-            file=file_record,
-            version_number=new_version_number,
-            storage_path=storage_path,
-            encrypted_dek=wrapped_dek.decode('utf-8'),
-            file_nonce=nonce,
-            checksum=file_checksum
-        )
-
-        return file_record
+        except Exception as e:
+            # If the file was partially created but DB failed, this helps debugging
+            print(f"CRITICAL UPLOAD ERROR: {str(e)}")
+            raise e
     
     def download_and_decrypt(self, user, file_id, version_number=None):
         try:

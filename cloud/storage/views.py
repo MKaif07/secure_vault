@@ -320,6 +320,49 @@ class FileViewSet(viewsets.ModelViewSet):
             return FileSummarySerializer
         return FileDetailSerializer
 
+    def create(self, request, *args, **kwargs):
+        uploaded_file = request.FILES.get('file')
+        if not uploaded_file:
+            return Response({"error": "No file provided"}, status=400)
+
+        service = FileService()
+        
+        # Check if a file with this name already exists for the owner
+        existing_file = File.objects.filter(
+            owner=request.user, 
+            display_name=uploaded_file.name
+        ).first()
+
+        try:
+            if existing_file:
+                # RE-UPLOAD LOGIC: Add a new version to existing record
+                file_record = service.upload_and_encrypt(
+                    request.user, 
+                    uploaded_file, 
+                    existing_file_id=existing_file.id
+                )
+                action_type = 'VERSION_UPLOAD'
+            else:
+                file_record = service.upload_and_encrypt(request.user, uploaded_file)
+                action_type = 'UPLOAD'
+
+            AuditLog.objects.create(
+                user=request.user,
+                action=action_type,
+                file_id=str(file_record.id),
+                ip_address=request.META.get('REMOTE_ADDR')
+            )
+
+            return Response({
+                "message": "File processed successfully",
+                "file_id": file_record.id,
+                "action": action_type
+            }, status=201)
+            
+        except Exception as e:
+            return Response({"error": f"Upload failed: {str(e)}"}, status=500)
+
+    
     @action(detail=True, methods=['get'], url_path='download')
     def download(self, request, pk=None):
         # 1. Fetch object using the secured queryset
