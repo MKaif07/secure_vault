@@ -15,19 +15,15 @@ const api = axios.create({
  * Attaches the JWT Bearer token to every outgoing request.
  */
 api.interceptors.request.use((config) => {
+  // We use a specific key name to avoid collisions
   const token = localStorage.getItem('vault_access_token');
   
   if (token) {
-    // Hardened Approach: Use Bearer instead of Basic
     config.headers.Authorization = `Bearer ${token}`;
-  } else {
-    console.warn("[VAULT] Shield Status: No Auth Token Found");
+    console.log("[VAULT] Token Injected: Auth Secured");
   }
-  
   return config;
-}, (error) => {
-  return Promise.reject(error);
-});
+}, (error) => Promise.reject(error));
 
 /**
  * RESPONSE INTERCEPTOR
@@ -37,10 +33,9 @@ api.interceptors.response.use(
   (response) => response,
   (error) => {
     if (error.response?.status === 401) {
-      // Clear token and kick to login if session is compromised or expired
-      console.error("[VAULT] Session Expired or Unauthorized. Lockdown initiated.");
+      console.error("[VAULT] Unauthorized. Clearing Token.");
       localStorage.removeItem('vault_access_token');
-      // window.location.href = '/login'; // Optional: Redirect to login
+      // Logic to redirect to login would go here
     }
     return Promise.reject(error);
   }

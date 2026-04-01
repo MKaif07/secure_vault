@@ -1,77 +1,45 @@
-import React, { createContext, useContext, useState, useEffect } from "react";
-import api from "../api/client"; // Import your axios instance
+import React, { createContext, useContext, useState } from 'react';
+import api from '../api/client';
 
 const AuthContext = createContext();
 
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
-  const [loading, setLoading] = useState(true);
-
-  // PERSISTENCE: Check if a token exists when the app starts
-  useEffect(() => {
-    const savedToken = localStorage.getItem("vault_token");
-    if (savedToken) {
-      // In a production app, you'd verify this token with the backend here
-      setUser({ username: "Session User", role: "user" }); 
-    }
-    setLoading(false);
-  }, []);
-
-  // const login = async (username, password) => {
-  //   const token = btoa(`${username}:${password}`);
-    
-  //   try {
-  //     // 1. Make the ACTUAL request to your Django backend
-  //     // We hit a simple endpoint like 'users/me/' or 'files/' to verify credentials
-  //     await api.get("/files/", {
-  //       headers: { Authorization: `Basic ${token}` }
-  //     });
-
-  //     // 2. If successful, persist and update state
-  //     localStorage.setItem("vault_token", token);
-  //     localStorage.setItem("vault_user", username);
-  //     setUser({ username, role: "user" });
-      
-  //     console.log(`✅ Backend Verified: ${username}`);
-  //     return { success: true };
-
-  //   } catch (err) {
-  //     console.error("❌ Login Failed:", err.response?.status);
-  //     return { 
-  //       success: false, 
-  //       message: err.response?.status === 401 ? "Invalid Credentials" : "Server Error" 
-  //     };
-  //   }
-  // };
 
   const login = async (username, password) => {
-    const token = btoa(`${username}:${password}`);
-    
     try {
-      // Call the "Me" endpoint to verify and get user details
-      const response = await api.get("/auth/me/", {
-        headers: { Authorization: `Basic ${token}` }
-      });
-
-      const userData = response.data; // Includes { username, role, id }
+      // 1. Point to the NEW JWT endpoint we added in urls.py
+      const response = await api.post('/token/', { username, password });
       
-      localStorage.setItem("vault_token", token);
-      setUser(userData);
+      const { access, refresh } = response.data;
+
+      // 2. Save the NEW JWT access token (matching client.js key)
+      localStorage.setItem('vault_access_token', access);
+      localStorage.setItem('vault_refresh_token', refresh);
+
+      // 3. Update local state
+      setUser({ username });
       
       return { success: true };
-    } catch (err) {
-      return { success: false, message: "Invalid identity or key." };
+    } catch (error) {
+      console.error("CRYPTOGRAPHIC ACCESS DENIED:", error);
+      return { 
+        success: false, 
+        message: error.response?.data?.detail || "INVALID IDENTITY CREDENTIALS" 
+      };
     }
   };
 
   const logout = () => {
+    localStorage.removeItem('vault_access_token');
+    localStorage.removeItem('vault_refresh_token');
     setUser(null);
-    localStorage.clear();
+    window.location.href = '/login';
   };
 
   return (
-    <AuthContext.Provider value={{ user, login, logout, loading }}>
-      {!loading && children}
+    <AuthContext.Provider value={{ user, login, logout }}>
+      {children}
     </AuthContext.Provider>
   );
 };

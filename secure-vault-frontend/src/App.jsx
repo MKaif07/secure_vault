@@ -8,6 +8,7 @@ import {
   QueryClient,
   QueryClientProvider,
 } from "@tanstack/react-query";
+import AuditDashboard from "./components/AuditDashboard";
 
 // A simple placeholder for Phase 4
 const AuditPage = () => (
@@ -42,7 +43,8 @@ export default function App() {
                 element={
                   <ProtectedRoute>
                     <Navbar />
-                    <AuditPage />
+                    {/* <AuditPage /> */}
+                    <AuditDashboard />
                   </ProtectedRoute>
                 }
               />

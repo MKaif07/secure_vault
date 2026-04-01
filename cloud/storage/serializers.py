@@ -101,25 +101,21 @@ User = get_user_model()
 class FileShareSerializer(serializers.ModelSerializer):
     # We accept email from the frontend, but it's not a field in the model
     email = serializers.EmailField(write_only=True)
-    shared_with_email = serializers.EmailField(source='shared_with.email', read_only=True)
-    shared_with_username = serializers.CharField(source='shared_with.username', read_only=True)
-
+    
     class Meta:
         model = FileShare
-        fields = [
-            'id', 'email', 'shared_with_email', 'shared_with_username', 
-            'expires_at', 'access_token', 'is_revoked'
-        ]
-        read_only_fields = ['id', 'access_token', 'is_revoked']
+        fields = ['email', 'expires_at', 'access_token', 'is_revoked']
+        read_only_fields = ['access_token', 'is_revoked']
 
     def validate_email(self, value):
+        """Check if the recipient user actually exists in the system."""
         try:
             return User.objects.get(email=value)
         except User.DoesNotExist:
             raise serializers.ValidationError("Recipient user with this email not found.")
 
     def create(self, validated_data):
-        # Swap email input for the User object validated above
+        # Swap the 'email' field for the 'shared_with' User object
         recipient_user = validated_data.pop('email')
         validated_data['shared_with'] = recipient_user
         return super().create(validated_data)

@@ -452,26 +452,30 @@ class FileViewSet(viewsets.ModelViewSet):
         if file_obj.owner != request.user:
             return Response({"error": "Only the owner can share this file"}, status=403)
 
-        # Set expiry logic (default 24h)
+        # Calculate expiry if the frontend sends 'expires_in_hours'
         hours = request.data.get('expires_in_hours', 24)
         expiry_date = timezone.now() + timedelta(hours=int(hours))
 
+        # Inject expiry into the data before serializing
         data = request.data.copy()
         data['expires_at'] = expiry_date
 
         serializer = FileShareSerializer(data=data)
         if serializer.is_valid():
-            # Save returns the FileShare instance
+            # The serializer.save() will now use the user object from validate_email
             share_instance = serializer.save(file=file_obj, shared_by=request.user)
             
+            # Audit Logging
             AuditLog.objects.create(
                 user=request.user,
                 action='SHARE_CREATED',
                 file_id=str(file_obj.id),
                 ip_address=request.META.get('REMOTE_ADDR')
             )
+            
             return Response(FileShareSerializer(share_instance).data, status=201)
         
+<<<<<<< HEAD
         return Response(serializer.errors, status=400)
 
     @action(detail=True, methods=['get'], url_path='shares')
@@ -536,3 +540,7 @@ class AuditLogViewSet(viewsets.ReadOnlyModelViewSet):
         if user.is_staff:
             return AuditLog.objects.all()
         return AuditLog.objects.filter(user=user)
+=======
+        # This will now return "Recipient user with this email not found" if it fails
+        return Response(serializer.errors, status=400)
+>>>>>>> parent of 607cd09 (added access revoke logic)
