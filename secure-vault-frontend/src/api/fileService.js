@@ -19,18 +19,36 @@ export const fileService = {
     return data;
   },
 
-  downloadFile: async (fileId, fileName) => {
-    const response = await api.get(`/files/${fileId}/download/`, {
-      responseType: "blob",
-    });
+  downloadFile: async (fileId, fileName, version = null) => {
+    try {
+        const url = `/files/${fileId}/download/${version ? `?v=${version}` : ""}`;
+        
+        const response = await api.get(url, {
+            responseType: 'blob', // Critical for binary data
+            withCredentials: true,
+            // headers: {
+            //     'Accept': 'application/octet-stream',
+            // }
+        });
 
-    const url = window.URL.createObjectURL(new Blob([response.data]));
-    const link = document.createElement("a");
-    link.href = url;
-    link.setAttribute("download", fileName);
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
+        // Create a URL for the blob
+        const blobUrl = window.URL.createObjectURL(new Blob([response.data]));
+        const link = document.createElement('a');
+        link.href = blobUrl;
+        
+        // Use the filename passed or fallback
+        link.setAttribute('download', fileName || `vault_file_${fileId.slice(0,4)}`);
+        
+        document.body.appendChild(link);
+        link.click();
+        
+        // Clean up to prevent memory leaks
+        link.remove();
+        window.URL.revokeObjectURL(blobUrl);
+
+    } catch (error) {
+        console.error("CORS or Decryption Error:", error);
+    }
   },
 
   shareFile: async (fileId, email, expiresInHours) => {

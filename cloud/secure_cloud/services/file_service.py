@@ -54,6 +54,8 @@ class FileService:
             
             with open(storage_path, 'wb') as f:
                 f.write(ciphertext)
+            file_data = file_obj.read()
+            actual_size = len(file_data)
 
             # 5. Create the Version record linked to our file_record
             FileVersion.objects.create(
@@ -62,7 +64,8 @@ class FileService:
                 storage_path=storage_path,
                 checksum=file_checksum,
                 file_nonce=nonce,
-                encrypted_dek=wrapped_dek
+                encrypted_dek=wrapped_dek,
+                file_size=actual_size
             )
 
             return file_record
@@ -73,35 +76,70 @@ class FileService:
             raise e
     
     def download_and_decrypt(self, user, file_id, version_number=None):
+        print("=== DOWNLOAD DEBUG START ===")
+        print("User:", user)
+        print("File ID:", file_id)
+        print("Version:", version_number)
+
         try:
-            # 1. Permission Check
-            file_record = File.objects.get(Q(id=file_id, owner=user))
-            # |Q(id=file_id, shares__shared_with=user, shares__access_level='DOWNLOADER'))
+            # 1. Permission Check (OWNER OR SHARED USER)
+            file_record = File.objects.get(
+                Q(id=file_id, owner=user) |
+                Q(id=file_id, shares__shared_with=user, shares__is_revoked=False)
+            )
 
-            # 2. Get Specific Version or Latest
+            # 2. Get Version
             if version_number:
-                version = file_record.versions.get(version_number=version_number)
+                version = file_record.versions.filter(
+                    version_number=version_number
+                ).first()
             else:
-                version = file_record.versions.latest('version_number')
+                version = file_record.versions.order_by('-version_number').first()
+
+            if not version:
+                print("❌ No version found")
+                return None, None
+
+            print("✅ Version found:", version.version_number)
+            print("Storage path:", version.storage_path)
+
+            # 3. Check file exists
+            if not os.path.exists(version.storage_path):
+                print("❌ File not found on disk")
+                return None, None
+
+            # 4. Read file ONCE
             with open(version.storage_path, 'rb') as f:
                 ciphertext = f.read()
 
-            print("VERSION:", version_number)
+            # 5. Integrity Check
             current_checksum = self.crypto.generate_checksum(ciphertext)
-            print(f"DB Checksum: {version.checksum}")
-            print(f"File Checksum: {current_checksum}")
+            print("DB Checksum:", version.checksum)
+            print("File Checksum:", current_checksum)
+
             if current_checksum != version.checksum:
-                # Log a high-severity security alert
-                print(f"CRITICAL: Integrity failure for file {file_id} version {version_number}!")
+                print("🚨 CRITICAL: Integrity failure!")
                 return None, None
-            
-            # 3. Decrypt (Rest of the logic remains the same)
-            dek = self.crypto.decrypt_dek(version.encrypted_dek.encode('utf-8'))
-            with open(version.storage_path, 'rb') as f:
-                ciphertext = f.read()
-            
-            decrypted_data = self.crypto.decrypt_file_data(ciphertext, dek, version.file_nonce)
+
+            # 6. Decrypt
+            try:
+                dek = self.crypto.decrypt_dek(version.encrypted_dek.encode('utf-8'))
+                decrypted_data = self.crypto.decrypt_file_data(
+                    ciphertext,
+                    dek,
+                    version.file_nonce
+                )
+            except Exception as e:
+                print("❌ Decryption failed:", str(e))
+                return None, None
+
+            print("✅ Decryption successful")
             return decrypted_data, file_record.display_name
 
-        except (File.DoesNotExist, FileVersion.DoesNotExist):
+        except File.DoesNotExist:
+            print("❌ File not found or no permission")
+            return None, None
+
+        except Exception as e:
+            print("❌ Unexpected error:", str(e))
             return None, None

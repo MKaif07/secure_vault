@@ -15,12 +15,37 @@ class AuditLogSerializer(serializers.ModelSerializer):
         model = AuditLog
         fields = ['id', 'username', 'action', 'file_id', 'ip_address', 'timestamp']
 
-
 class FileVersionSerializer(serializers.ModelSerializer):
+    # We add a human-readable size and date
+    size_human = serializers.SerializerMethodField()
+    created_at = serializers.DateTimeField(format="%Y-%m-%d %H:%M")
+    uploaded_at = serializers.DateTimeField(source='created_at', format="%Y-%m-%d %H:%M")
+    
     class Meta:
         model = FileVersion
-        fields = ['version_number', 'created_at', 'file_size'] # add file_size to model if desired
+        fields = ['id', 'version_number', 'size_human', 'created_at', 'uploaded_at']
 
+    def get_size_human(self, obj):
+        """
+        Dynamically converts bytes to the most appropriate unit (KB, MB, GB).
+        """
+        size_bytes = obj.file_size
+        if size_bytes <= 0:
+            return "0 KB"
+            
+        # Unit thresholds
+        kb = 1024
+        mb = kb ** 2
+        gb = kb ** 3
+
+        if size_bytes >= gb:
+            return f"{round(size_bytes / gb, 2)} GB"
+        elif size_bytes >= mb:
+            return f"{round(size_bytes / mb, 2)} MB"
+        else:
+            # Default to KB as requested
+            return f"{round(size_bytes / kb, 2)} KB"
+        
 class FileDetailSerializer(serializers.ModelSerializer):
     versions = FileVersionSerializer(many=True, read_only=True)
     owner_name = serializers.CharField(source='owner.username', read_only=True)
@@ -30,23 +55,14 @@ class FileDetailSerializer(serializers.ModelSerializer):
         fields = ['id', 'display_name', 'owner_name', 'upload_date', 'versions']
 
 class FileSummarySerializer(serializers.ModelSerializer):
-    version_count = serializers.SerializerMethodField()
+    versions = FileVersionSerializer(many=True, read_only=True)
     last_upload = serializers.DateTimeField(source='upload_date', format="%Y-%m-%d %H:%M")
 
     class Meta:
         model = File
-        fields = ['id', 'display_name', 'last_upload', 'version_count']
+        fields = ['id', 'display_name', 'last_upload', 'versions']
+    
 
-    def get_version_count(self, obj):
-        return obj.versions.count()
-    
-class FileVersionSerializer(serializers.ModelSerializer):
-    # We add a human-readable size and date
-    uploaded_at = serializers.DateTimeField(source='created_at', format="%Y-%m-%d %H:%M")
-    
-    class Meta:
-        model = FileVersion
-        fields = ['version_number', 'uploaded_at']
 
 class FileDetailSerializer(serializers.ModelSerializer):
     # This 'versions' field matches the 'related_name' in our FileVersion model

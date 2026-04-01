@@ -3,16 +3,17 @@ from rest_framework.response import Response
 from rest_framework.parsers import MultiPartParser
 from .serializers import FileSerializer, AuditLogSerializer, FileDetailSerializer, FileSummarySerializer
 from secure_cloud.services.file_service import FileService
-from django.http import HttpResponse
+from django.http import HttpResponse, FileResponse
 from .models import AuditLog, File, FileShare
 from django.contrib.auth import get_user_model
-from django.db.models import Q
+from django.db.models import Q, Count
 from users.models import User
 from rest_framework import status, generics, viewsets, filters
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.decorators import action
 from .serializers import UserSerializer, FileShareSerializer
 from django.utils import timezone
+from io import BytesIO
 from datetime import timedelta
 
 class RegisterView(generics.CreateAPIView):
@@ -78,7 +79,7 @@ class FileDownloadView(APIView):
                 shared_with = request.user,
                 is_revoked=False
             ).filter(
-                Q(expires_at__gt=timezone.now | Q(expires_at__isnull=True))
+                Q(expires_at__gt=timezone.now() | Q(expires_at__isnull=True))
             ).exists()
 
             if not (is_owner or is_shared):
@@ -313,6 +314,7 @@ class FileViewSet(viewsets.ModelViewSet):
             # Q(owner=self.request.user) | 
             Q(owner=user) | 
             Q(shares__shared_with=user, shares__is_revoked=False)
+        ).annotate(version_count=Count('versions')
         ).distinct().order_by('-upload_date')
 
     def get_serializer_class(self):
@@ -403,6 +405,21 @@ class FileViewSet(viewsets.ModelViewSet):
             if not file_bytes:
                 return Response({"error": "File payload missing"}, status=404)
 
+            try:
+                response = FileResponse(
+                    BytesIO(file_bytes),
+                    as_attachment=True,
+                    filename=filename
+                )
+                
+                print("TYPE:", type(file_bytes))
+                print("SIZE:", len(file_bytes) if file_bytes else 0)
+                return response
+
+            except Exception as e:
+                print("❌ RESPONSE ERROR:", str(e))
+                return Response({"error": str(e)}, status=500)
+
             # Audit Log
             AuditLog.objects.create(
                 user=request.user,
@@ -411,8 +428,17 @@ class FileViewSet(viewsets.ModelViewSet):
                 ip_address=request.META.get('REMOTE_ADDR')
             )
 
-            response = HttpResponse(file_bytes, content_type='application/octet-stream')
+            response = FileResponse(
+                BytesIO(file_bytes),
+                as_attachment=True,
+                filename=filename,
+                content_type='application/octet-stream'
+            )
+
             response['Content-Disposition'] = f'attachment; filename="{filename}"'
+            response['Access-Control-Allow-Origin'] = '*'
+            response['Access-Control-Expose-Headers'] = 'Content-Disposition'
+
             return response
 
         except Exception as e:

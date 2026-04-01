@@ -7,7 +7,19 @@ import {
   QueryClientProvider,
 } from "@tanstack/react-query";
 import { fileService } from "../api/fileService";
-import { Upload, Shield, Loader2, Search, FileText } from "lucide-react";
+import {
+  Upload,
+  Shield,
+  Loader2,
+  Search,
+  FileText,
+  ShieldCheck,
+  Download,
+  HardDrive,
+  Share2,
+  ChevronDown,
+  ChevronUp,
+} from "lucide-react";
 import ShareModal from "./ShareModal";
 
 export default function VaultCore() {
@@ -16,6 +28,8 @@ export default function VaultCore() {
 
   const [isShareModalOpen, setShareModalOpen] = useState(false);
   const [selectedFile, setSelectedFile] = useState(null);
+
+  const [expandedFile, setExpandedFile] = useState(null);
 
   const handleOpenShare = (file) => {
     setSelectedFile(file);
@@ -116,25 +130,75 @@ export default function VaultCore() {
           </div>
         ) : Array.isArray(files) && files.length > 0 ? (
           files.map((file) => (
+            // Inside VaultCore's files.map((file) => ...)
             <div
               key={file.id}
-              className="p-6 border-2 border-vault-accent bg-vault-gray shadow-brutal group hover:bg-black transition-all"
+              className="p-6 border-2 border-vault-accent bg-vault-gray shadow-brutal group hover:bg-[#0a0a0a] transition-all"
             >
               <div className="flex justify-between items-start mb-4">
                 <FileText className="text-vault-accent" size={32} />
                 <Shield className="text-green-500 opacity-50" size={16} />
               </div>
+
               <h3 className="font-bold truncate uppercase tracking-tighter">
-                {file.display_name || "Unnamed File"}
+                {file.display_name}
+                <span className="text-[10px] ml-2 opacity-40">
+                  V{file.version_count}
+                </span>
               </h3>
-              <div className="mt-4 flex gap-2">
+
+              {/* VERSION TOGGLE */}
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setExpandedFile(expandedFile === file.id ? null : file.id);
+                }}
+                className="text-[9px] font-mono text-gray-500 mt-1 uppercase hover:text-vault-accent transition-colors flex items-center gap-1"
+              >
+                ID: {file.id.slice(0, 8)}...{" "}
+                {expandedFile === file.id ? (
+                  <ChevronUp size={10} />
+                ) : (
+                  <ChevronDown size={10} />
+                )}
+              </button>
+
+              {/* VERSION LIST (The Logic from FileList) */}
+              {expandedFile === file.id && (
+                <div className="mt-4 space-y-1 border-t border-gray-800 pt-3">
+                  {file.versions?.map((v) => (
+                    <div
+                      key={v.id}
+                      className="flex justify-between items-center bg-black/40 p-2 text-[9px] border border-transparent hover:border-vault-accent transition-all"
+                    >
+                      <span className="font-mono">
+                        V{v.version_number} ({v.size_human})
+                      </span>
+                      <button
+                        onClick={() =>
+                          fileService.downloadFile(
+                            file.id,
+                            file.display_name,
+                            v.version_number,
+                          )
+                        }
+                        className="bg-gray-800 px-2 py-0.5 uppercase hover:bg-vault-accent hover:text-black"
+                      >
+                        Restore
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              <div className="mt-6 flex gap-2">
                 <button
                   onClick={() =>
                     fileService.downloadFile(file.id, file.display_name)
                   }
-                  className="flex-1 bg-vault-accent text-black text-[10px] font-black py-2 uppercase hover:bg-white transition-colors"
+                  className="flex-1 bg-vault-accent text-black text-[10px] font-black py-3 uppercase hover:bg-white transition-colors"
                 >
-                  Retrieve
+                  Retrieve Latest
                 </button>
                 <button
                   onClick={() => handleOpenShare(file)}

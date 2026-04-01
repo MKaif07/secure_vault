@@ -26,7 +26,8 @@ class FileVersion(models.Model):
     
     created_at = models.DateTimeField(auto_now_add=True)
     checksum = models.CharField(max_length=64, editable=False, null=True)
-
+    file_size = models.BigIntegerField(default=0)
+    
     class Meta:
         unique_together = ('file', 'version_number')
 
