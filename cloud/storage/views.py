@@ -475,7 +475,6 @@ class FileViewSet(viewsets.ModelViewSet):
             
             return Response(FileShareSerializer(share_instance).data, status=201)
         
-<<<<<<< HEAD
         return Response(serializer.errors, status=400)
 
     @action(detail=True, methods=['get'], url_path='shares')
@@ -540,7 +539,3 @@ class AuditLogViewSet(viewsets.ReadOnlyModelViewSet):
         if user.is_staff:
             return AuditLog.objects.all()
         return AuditLog.objects.filter(user=user)
-=======
-        # This will now return "Recipient user with this email not found" if it fails
-        return Response(serializer.errors, status=400)
->>>>>>> parent of 607cd09 (added access revoke logic)
