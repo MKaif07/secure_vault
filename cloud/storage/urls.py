@@ -1,8 +1,14 @@
-from django.urls import path
-from .views import FileUploadView, FileDownloadView, AuditLogListView, ShareFileView, RevokeShareView, SharedWithMeListView, FileDetailView, FileListView
+from django.urls import path, include
+from .views import FileUploadView, FileDownloadView, AuditLogListView, ShareFileView, RevokeShareView, SharedWithMeListView, FileDetailView, FileListView, FileViewSet
+from rest_framework.routers import DefaultRouter
+
+router = DefaultRouter()
+router.register(r'files', FileViewSet, basename='file')
+
 
 urlpatterns = [
     path('', FileListView.as_view(), name='file-list'),
+    path('api/', include(router.urls)),
     path('upload/', FileUploadView.as_view(), name='file-upload'),
     path('download/<uuid:file_id>/', FileDownloadView.as_view(), name='file-download'),
     path('share/<uuid:file_id>/', ShareFileView.as_view(), name='file-share'),

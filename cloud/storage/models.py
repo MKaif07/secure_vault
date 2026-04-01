@@ -1,6 +1,7 @@
 import uuid
 from django.db import models
 from django.conf import settings
+from django.utils import timezone
 
 class File(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
@@ -44,18 +45,24 @@ class AuditLog(models.Model):
         return f"{self.action} by {self.user} at {self.timestamp}"
     
 class FileShare(models.Model):
-    ACCESS_LEVELS = (
-        ('VIEWER', 'Metadata Only'),
-        ('DOWNLOADER', 'Can Decrypt & Download'),
-    )
-
-    file = models.ForeignKey(File, on_delete=models.CASCADE, related_name='shares')
-    shared_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='shares_initiated')
-    shared_with = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='shared_files')
+    # Primary Key
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     
-    access_level = models.CharField(max_length=20, choices=ACCESS_LEVELS, default='VIEWER')
+    # Links
+    file = models.ForeignKey('File', on_delete=models.CASCADE, related_name='shares')
+    shared_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='shared_files')
+    shared_with = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='received_files', null=True, blank=True)
+    
+    access_token = models.UUIDField(unique=True, default=uuid.uuid4, editable=False)
+    
+    expires_at = models.DateTimeField(default=timezone.now)
+    is_revoked = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
-    expires_at = models.DateTimeField(null=True, blank=True) # Optional: Auto-revoke access
 
-    class Meta:
-        unique_together = ('file', 'shared_with') # One share record per user/file pair
+    @property
+    def is_active(self):
+        # Ensure timezone is imported from django.utils
+        return not self.is_revoked and self.expires_at > timezone.now()
+
+    def __str__(self):
+        return f"Share: {self.file.display_name} -> {self.shared_with or 'Public Link'}"

@@ -8,9 +8,11 @@ from .models import AuditLog, File, FileShare
 from django.contrib.auth import get_user_model
 from django.db.models import Q
 from users.models import User
-from rest_framework import status, generics
+from rest_framework import status, generics, viewsets, filters
 from rest_framework.permissions import AllowAny, IsAuthenticated
-from .serializers import UserSerializer
+from rest_framework.decorators import action
+from .serializers import UserSerializer, FileShareSerializer
+from django.utils import timezone
 
 class RegisterView(generics.CreateAPIView):
     queryset = User.objects.all()
@@ -62,28 +64,50 @@ class FileDownloadView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request, file_id):
-        print(f"--- Download Started for ID: {file_id} ---")
-        version_num = request.query_params.get('v')
+        try:
+            file_metadata = self.get_object(id=file_id)
+            token = request.query_params.get('token')
 
-        service = FileService()
-        file_bytes, filename = service.download_and_decrypt(request.user, file_id, version_number=version_num)
-        
-        if not file_bytes:
-            print(f"--- Download Failed for ID: {file_id} ---")
-            return Response({"error": "File not found or access denied"}, status=404)
+            #check ownership
+            is_owner = file_metadata.owner == request.user
 
-        AuditLog.objects.create(
-            user=request.user,
-            action='DOWNLOAD',
-            file_id=str(file_id),
-            ip_address=request.META.get('REMOTE_ADDR')
-        )
-        print(f"--- Log created successfully: {file_id} ---")
+            #check share
+            is_shared = FileShare.objects.filter(
+                file=file_metadata,
+                shared_with = request.user,
+                is_revoked=False
+            ).filter(
+                Q(expires_at__gt=timezone.now | Q(expires_at__isnull=True))
+            ).exists()
 
-        # Send the file back to the browser
-        response = HttpResponse(file_bytes, content_type='application/octet-stream')
-        response['Content-Disposition'] = f'attachment; filename="{filename}"'
-        return response
+            if not (is_owner or is_shared):
+                    logger.warning(f"Unauthorized download attempt on {file_id} by {request.user}")
+                    return Response({"error": "Access denied: You do not own this file or the share has expired."}, status=403)
+            
+            print(f"--- Download Started for ID: {file_id} ---")
+            version_num = request.query_params.get('v')
+            service = FileService()
+
+            file_bytes, filename = service.download_and_decrypt(request.user, file_id, version_number=version_num)
+            
+            if not file_bytes:
+                print(f"--- Download Failed for ID: {file_id} ---")
+                return Response({"error": "File not found or access denied"}, status=404)
+
+            AuditLog.objects.create(
+                user=request.user,
+                action='DOWNLOAD',
+                file_id=str(file_id),
+                ip_address=request.META.get('REMOTE_ADDR')
+            )
+            print(f"--- Log created successfully: {file_id} ---")
+
+            # Send the file back to the browser
+            response = HttpResponse(file_bytes, content_type='application/octet-stream')
+            response['Content-Disposition'] = f'attachment; filename="{filename}"'
+            return response
+        except Exception as e:
+            return Response({"error": "File record not found"}, status=404)
     
 from rest_framework import generics
 from rest_framework.permissions import IsAdminUser
@@ -131,13 +155,13 @@ class ShareFileView(APIView):
         except User.DoesNotExist:
             return Response({"error": "User with this email not found"}, status=404)
         
-class FileListView(generics.ListAPIView):
-    permission_classes = [IsAuthenticated]
-    serializer_class = FileDetailSerializer
+# class FileListView(generics.ListAPIView):
+#     permission_classes = [IsAuthenticated]
+#     serializer_class = FileDetailSerializer
 
-    def get_queryset(self):
-        # Return files owned by user OR shared with user
-        return File.objects.filter(owner=self.request.user).distinct()
+#     def get_queryset(self):
+#         # Return files owned by user OR shared with user
+#         return File.objects.filter(owner=self.request.user).distinct()
     
 class MyFilesListView(APIView):
     permission_classes = [IsAuthenticated]
@@ -270,3 +294,106 @@ class AuditLogListView(generics.ListAPIView):
     filter_backends = [DjangoFilterBackend, filters.SearchFilter]
     filterset_fields = ['action', 'user__username']
     search_fields = ['file_id', 'ip_address']
+
+class FileViewSet(viewsets.ModelViewSet):
+    permission_classes = [IsAuthenticated]
+    
+    # Filtering and Search Setup
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['display_name']
+    ordering_fields = ['upload_date', 'display_name']
+
+    def get_queryset(self):
+        """
+        SECURITY: Users can only see files they own OR files shared with them.
+        """
+        return File.objects.filter(
+            Q(owner=self.request.user) | 
+            Q(shares__shared_with=self.request.user)
+        ).distinct().order_by('-upload_date')
+
+    def get_serializer_class(self):
+        if self.action == 'list':
+            return FileSummarySerializer
+        return FileDetailSerializer
+
+    @action(detail=True, methods=['get'], url_path='download')
+    def download(self, request, pk=None):
+        """
+        COMPLETE SECURE RETRIEVAL LOGIC
+        Checks ownership, share status, and expiration before decryption.
+        """
+        try:
+            file_metadata = self.get_object() # Fetches by ID + get_queryset security
+            token = request.query_params.get('token')
+
+            # 1. Access Control Logic
+            is_owner = file_metadata.owner == request.user
+            
+            # Check if a valid, unrevoked, and unexpired share exists
+            is_shared = FileShare.objects.filter(
+                file=file_metadata,
+                shared_with=request.user,
+                is_revoked=False
+            ).filter(
+                Q(expires_at__gt=timezone.now()) | Q(expires_at__isnull=True)
+            ).exists()
+
+            # If user provided a specific share token, validate that too
+            if token:
+                is_shared = is_shared and FileShare.objects.filter(access_token=token).exists()
+
+            if not (is_owner or is_shared):
+                return Response({"error": "ACCESS DENIED: Unauthorized or Link Expired"}, status=403)
+
+            # 2. Cryptographic Retrieval via Service
+            service = FileService()
+            version_num = request.query_params.get('v')
+            
+            # This calls your AES-256 GCM decryption logic
+            file_bytes, filename = service.download_and_decrypt(
+                request.user, 
+                file_metadata.id, 
+                version_number=version_num
+            )
+
+            if not file_bytes:
+                return Response({"error": "DECRYPTION FAILURE: Payload missing on disk"}, status=404)
+
+            # 3. Audit Logging
+            AuditLog.objects.create(
+                user=request.user,
+                action='DOWNLOAD',
+                file_id=str(file_metadata.id),
+                ip_address=request.META.get('REMOTE_ADDR')
+            )
+
+            # 4. Binary Stream Response
+            response = HttpResponse(file_bytes, content_type='application/octet-stream')
+            response['Content-Disposition'] = f'attachment; filename="{filename}"'
+            return response
+
+        except File.DoesNotExist:
+            return Response({"error": "File not found"}, status=404)
+
+    @action(detail=True, methods=['post'], url_path='share')
+    def share(self, request, pk=None):
+        """
+        Logic to create a new share record for a recipient.
+        """
+        file_obj = self.get_object()
+        if file_obj.owner != request.user:
+            return Response({"error": "Only the owner can share this file"}, status=403)
+
+        serializer = FileShareSerializer(data=request.data)
+        if serializer.is_valid():
+            serializer.save(file=file_obj, shared_by=request.user)
+            
+            AuditLog.objects.create(
+                user=request.user,
+                action='SHARE_CREATED',
+                file_id=str(file_obj.id),
+                ip_address=request.META.get('REMOTE_ADDR')
+            )
+            return Response(serializer.data, status=201)
+        return Response(serializer.errors, status=400)
