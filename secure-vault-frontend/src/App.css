@@ -182,3 +182,24 @@
     border-right-color: var(--border);
   }
 }
+
+/* Custom Scrollbar for the Audit Terminal */
+@layer components {
+  .custom-scrollbar::-webkit-scrollbar {
+    width: 6px;
+  }
+
+  .custom-scrollbar::-webkit-scrollbar-track {
+    background: #050505; /* Matches vault-black */
+  }
+
+  .custom-scrollbar::-webkit-scrollbar-thumb {
+    background: #00ff41; /* Use your vault-accent color */
+    border-radius: 0px;
+    border: 1px solid #050505;
+  }
+
+  .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+    background: #ffffff;
+  }
+}

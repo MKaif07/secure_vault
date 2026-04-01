@@ -1,38 +1,49 @@
+// src/api/client.js
 import axios from 'axios';
 
-// This is the core connection to your Django server
 const api = axios.create({
-  baseURL: 'http://127.0.0.1:8000/api', // Matches your Django URL
-  timeout: 5000,
+  baseURL: 'http://127.0.0.1:8000/api',
+  timeout: 8000, // Increased slightly for large encrypted file transfers
   headers: {
     'Content-Type': 'application/json',
     'Accept': 'application/json',
   }
 });
 
-// // Add a request interceptor to handle Auth (Market-Fit approach)
-// api.interceptors.request.use((config) => {
-//   // For now, we use the credentials we set up in the backend
-//   // In a real app, you'd pull this from a login state/localStorage
-//   const token = btoa('alice:sapp1234'); 
-//   config.headers.Authorization = `Basic ${token}`;
-//   return config;
-// });
-
+/**
+ * REQUEST INTERCEPTOR
+ * Attaches the JWT Bearer token to every outgoing request.
+ */
 api.interceptors.request.use((config) => {
-  // Grab the LATEST token saved during the login process
-  const token = localStorage.getItem('vault_token');
+  const token = localStorage.getItem('vault_access_token');
   
   if (token) {
-    config.headers.Authorization = `Basic ${token}`;
-    console.log("Outgoing Request Auth: Secure");
+    // Hardened Approach: Use Bearer instead of Basic
+    config.headers.Authorization = `Bearer ${token}`;
   } else {
-    console.warn("Outgoing Request Auth: MISSING (Sending as Guest)");
+    console.warn("[VAULT] Shield Status: No Auth Token Found");
   }
   
   return config;
 }, (error) => {
   return Promise.reject(error);
 });
+
+/**
+ * RESPONSE INTERCEPTOR
+ * Catch global errors (like 401 Unauthorized) in one place.
+ */
+api.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (error.response?.status === 401) {
+      // Clear token and kick to login if session is compromised or expired
+      console.error("[VAULT] Session Expired or Unauthorized. Lockdown initiated.");
+      localStorage.removeItem('vault_access_token');
+      // window.location.href = '/login'; // Optional: Redirect to login
+    }
+    return Promise.reject(error);
+  }
+);
 
 export default api;

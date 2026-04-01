@@ -18,6 +18,16 @@ from django.contrib import admin
 from django.urls import path, include
 from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView, SpectacularRedocView
 from storage.views import RegisterView, UserMeView
+from rest_framework_simplejwt.views import (
+    TokenObtainPairView,
+    TokenRefreshView,
+)
+from storage.views import AuditLogViewSet
+from rest_framework.routers import DefaultRouter
+auditRouter = DefaultRouter()
+auditRouter.register(r'audit-logs', AuditLogViewSet, basename='auditlog')
+
+
 urlpatterns = [
     path('admin/', admin.site.urls),
     path('api/files/', include('storage.urls')),
@@ -27,6 +37,12 @@ urlpatterns = [
     # AUTH
     path('api/auth/register/', RegisterView.as_view(), name='auth_register'),
     path('api/auth/me/', UserMeView.as_view(), name='auth_me'),
+
+    path('api/token/', TokenObtainPairView.as_view(), name='token_obtain_pair'),
+    path('api/token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
+
+    #AUDIT
+    path('api/', include(auditRouter.urls)),
     # The Swagger UI
     path('api/docs/', SpectacularSwaggerView.as_view(url_name='schema'), name='swagger-ui'),
     

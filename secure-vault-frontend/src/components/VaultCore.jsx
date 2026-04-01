@@ -21,6 +21,8 @@ import {
   ChevronUp,
 } from "lucide-react";
 import ShareModal from "./ShareModal";
+import ManageAccessModal from "./ManageAccessModal";
+
 
 export default function VaultCore() {
   const [search, setSearch] = useState("");
@@ -30,6 +32,8 @@ export default function VaultCore() {
   const [selectedFile, setSelectedFile] = useState(null);
 
   const [expandedFile, setExpandedFile] = useState(null);
+
+  const [isAccessModalOpen, setAccessModalOpen] = useState(false);
 
   const handleOpenShare = (file) => {
     setSelectedFile(file);
@@ -206,6 +210,15 @@ export default function VaultCore() {
                 >
                   Share
                 </button>
+                <button
+                  onClick={() => {
+                    setSelectedFile(file);
+                    setAccessModalOpen(true);
+                  }}
+                  className="px-3 border border-vault-accent text-vault-accent text-[10px] font-black uppercase hover:bg-red-900 hover:border-red-900 transition-colors"
+                >
+                  Manage Access
+                </button>
                 <button className="px-3 border border-vault-accent text-vault-accent text-[10px] font-black uppercase hover:bg-red-900 hover:border-red-900 transition-colors">
                   Delete
                 </button>
@@ -225,6 +238,11 @@ export default function VaultCore() {
           onClose={() => setShareModalOpen(false)}
         />
       </div>
+      <ManageAccessModal
+        file={selectedFile}
+        isOpen={isAccessModalOpen}
+        onClose={() => setAccessModalOpen(false)}
+      />
     </div>
   );
 }

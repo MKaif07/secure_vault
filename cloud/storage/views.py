@@ -8,10 +8,10 @@ from .models import AuditLog, File, FileShare
 from django.contrib.auth import get_user_model
 from django.db.models import Q, Count
 from users.models import User
-from rest_framework import status, generics, viewsets, filters
+from rest_framework import status, generics, viewsets, filters, permissions
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.decorators import action
-from .serializers import UserSerializer, FileShareSerializer
+from .serializers import UserSerializer, FileShareSerializer, AuditLogSerializer
 from django.utils import timezone
 from io import BytesIO
 from datetime import timedelta
@@ -505,3 +505,34 @@ class FileViewSet(viewsets.ModelViewSet):
             return Response({"status": "Access Terminated Successfully"}, status=200)
         except FileShare.DoesNotExist:
             return Response({"error": "Share record not found or unauthorized"}, status=404)
+    
+    def _log_event(self, action, file_obj):
+        x_forwarded_for = self.request.META.get('HTTP_X_FORWARDED_FOR')
+        if x_forwarded_for:
+            ip = x_forwarded_for.split(',')[0]
+        else:
+            ip = self.request.META.get('REMOTE_ADDR')
+
+        AuditLog.objects.create(
+            user=self.request.user,
+            action=action,
+            file_id=str(file_obj.id),
+            file_display_name=file_obj.display_name, # Now we have it!
+            ip_address=ip
+        )
+
+
+class AuditLogViewSet(viewsets.ReadOnlyModelViewSet):
+    """
+    Forensic Audit View: Read-only access to system logs.
+    Regular users: See only their own activity.
+    Staff: See the entire system audit stream.
+    """
+    serializer_class = AuditLogSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        user = self.request.user
+        if user.is_staff:
+            return AuditLog.objects.all()
+        return AuditLog.objects.filter(user=user)

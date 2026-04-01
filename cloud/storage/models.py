@@ -35,6 +35,7 @@ class AuditLog(models.Model):
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True)
     action = models.CharField(max_length=50) # 'UPLOAD', 'DOWNLOAD', 'VIEW'
     file_id = models.CharField(max_length=255)
+    file_display_name = models.CharField(max_length=255, blank=True, null=True)
     ip_address = models.GenericIPAddressField(null=True)
     timestamp = models.DateTimeField(auto_now_add=True)
 
@@ -62,7 +63,7 @@ class FileShare(models.Model):
 
     class Meta:
         unique_together = ('file', 'shared_with')
-        
+
     @property
     def is_active(self):
         # Ensure timezone is imported from django.utils
