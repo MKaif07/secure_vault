@@ -36,7 +36,7 @@ export default function Login() {
             <label className="block uppercase text-[10px] font-black mb-2 tracking-[0.2em] opacity-40">Identity Signature</label>
             <input 
               required
-              className="w-full bg-black border-2 border-vault-accent p-4 outline-none focus:bg-vault-accent focus:text-black transition-all uppercase placeholder:opacity-20"
+              className="w-full bg-black border-2 border-vault-accent p-4 outline-none focus:bg-vault-accent focus:text-gray-400 transition-all uppercase placeholder:opacity-20"
               type="text" 
               placeholder="Username..."
               onChange={(e) => setCreds({...creds, username: e.target.value})}
@@ -46,7 +46,7 @@ export default function Login() {
             <label className="block uppercase text-[10px] font-black mb-2 tracking-[0.2em] opacity-40">Cryptographic Key</label>
             <input 
               required
-              className="w-full bg-black border-2 border-vault-accent p-4 outline-none focus:bg-vault-accent focus:text-black transition-all placeholder:opacity-20"
+              className="w-full bg-black border-2 border-vault-accent p-4 outline-none focus:bg-vault-accent focus:text-gray-400 transition-all placeholder:opacity-20"
               type="password" 
               placeholder="••••••••"
               onChange={(e) => setCreds({...creds, password: e.target.value})}
@@ -55,7 +55,7 @@ export default function Login() {
           
           <button 
             disabled={isDecrypting}
-            className={`w-full font-black py-5 uppercase transition-all shadow-brutal flex items-center justify-center gap-2 
+            className={`w-full bg-gray-200 font-black py-5 uppercase transition-all shadow-brutal flex items-center justify-center gap-2 
               ${isDecrypting ? 'bg-gray-800 text-gray-500' : 'bg-vault-accent text-black hover:bg-white'}`}
           >
             {isDecrypting ? 'Decrypting Hash...' : 'Authorize Entry'}

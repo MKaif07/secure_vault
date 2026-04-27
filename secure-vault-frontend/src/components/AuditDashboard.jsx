@@ -21,7 +21,7 @@ export default function AuditDashboard() {
   );
 
   return (
-    <div className="bg-[#050505] border-2 border-vault-accent p-6 shadow-brutal font-mono">
+    <div className="bg-[#050505] border-2 border-vault-accent p-6 shadow-brutal font-mono m-2.5">
       {/* Terminal Header */}
       <div className="flex items-center justify-between mb-6 border-b border-vault-accent/30 pb-4">
         <div className="flex items-center gap-3">

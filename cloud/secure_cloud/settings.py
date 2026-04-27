@@ -166,6 +166,7 @@ USE_TZ = True
 STATIC_URL = 'static/'
 
 AUTH_USER_MODEL = 'users.User'
+# AUTH_USER_MODEL = 'files.User'
 
 MASTER_ENCRYPTION_KEY = os.getenv("MASTER_KEY", "SixteenByteKey!!SixteenByteKey!!")
 
