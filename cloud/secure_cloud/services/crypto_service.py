@@ -2,6 +2,8 @@ import os
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
+from cryptography.hazmat.backends import default_backend
 from django.conf import settings
 import base64
 import hashlib
@@ -20,6 +22,39 @@ class CryptoService:
         """Generates a random 256-bit key for a specific file."""
         return AESGCM.generate_key(bit_length=256)
 
+    def get_streaming_cipher(self, dek):
+        """
+        Creates a stateful cipher context for streaming large files.
+        """
+        # 12-byte Nonce is standard and recommended for AES-GCM
+        nonce = os.urandom(12)
+        
+        # Create the Cipher object
+        cipher = Cipher(
+            algorithms.AES(dek), 
+            modes.GCM(nonce), 
+            backend=default_backend()
+        )
+        
+        # Create the 'encryptor' context which holds the state
+        encryptor = cipher.encryptor()
+        
+        return encryptor, nonce
+    
+    def get_streaming_decryptor(self, dek, nonce):
+        """
+        Creates a stateful AES-GCM decryption context for large files.
+        """
+        # 1. Initialize the Cipher with the same algorithm and mode used in encryption
+        cipher = Cipher(
+            algorithms.AES(dek), 
+            modes.GCM(nonce), 
+            backend=default_backend()
+        )
+        
+        # 2. Return the DECRYPTOR context (this is the attribute that was missing)
+        return cipher.decryptor()
+    
     def encrypt_dek(self, dek):
         """Encrypts the DEK using the Master KEK so we can store it safely."""
         # For simplicity in this phase, we use AESGCM for the KEK too

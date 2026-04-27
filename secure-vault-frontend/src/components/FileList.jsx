@@ -15,27 +15,22 @@ export default function FileList() {
   const [search, setSearch] = useState("");
   const [expandedFile, setExpandedFile] = useState(null);
 
-  const handleDownload = async (fileId, versionNum = null) => {
-    try {
-      // FIX: Cleaned up the slash before the query parameter
-      const url = `/files/${fileId}/download${versionNum ? `?v=${versionNum}` : ""}`;
+  const handleDownload = (fileId, versionNum = null) => {
+    const token = localStorage.getItem("vault_access_token");
 
-      const response = await api.get(url, { responseType: "blob" });
+    // 1. Construct the URL with the token as a query param
+    // Since window.open doesn't use our Axios interceptor, we pass the token manually
+    let url = `http://127.0.0.1:8000/api/files/${fileId}/download/?token=${token}`;
+    if (versionNum) url += `&v=${versionNum}`;
 
-      const blob = new Blob([response.data]);
-      const link = document.createElement("a");
-      link.href = window.URL.createObjectURL(blob);
-
-      // OPTIONAL: Try to get the real filename from headers if your CORS allows it
-      link.setAttribute("download", `vault_decrypt_${fileId.slice(0, 4)}`);
-
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-    } catch (error) {
-      console.error("Vault Decryption Error:", error);
-      alert("Failed to decrypt or retrieve file. Access may be expired.");
-    }
+    // 2. Trigger the native browser download
+    // This pipes the stream directly to the user's Downloads folder
+    const link = document.createElement("a");
+    link.href = url;
+    link.setAttribute("download", ""); // The backend header will provide the real name
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
   };
 
   const fetchFiles = async () => {
@@ -88,7 +83,7 @@ export default function FileList() {
               </div>
 
               <h3 className="font-bold text-lg mb-1 truncate">
-                {'=>'} {file.display_name} {file.versions[-1].version_number}
+                {"=>"} {file.display_name} {file.versions[-1].version_number}
               </h3>
 
               <button

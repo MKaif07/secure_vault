@@ -3,7 +3,9 @@ import axios from 'axios';
 
 const api = axios.create({
   baseURL: 'http://127.0.0.1:8000/api',
-  timeout: 8000, // Increased slightly for large encrypted file transfers
+  // CRITICAL: We remove the global 8s timeout. 
+  // Large files need minutes, not seconds.
+  timeout: 0, 
   headers: {
     'Content-Type': 'application/json',
     'Accept': 'application/json',
@@ -12,30 +14,42 @@ const api = axios.create({
 
 /**
  * REQUEST INTERCEPTOR
- * Attaches the JWT Bearer token to every outgoing request.
  */
 api.interceptors.request.use((config) => {
-  // We use a specific key name to avoid collisions
   const token = localStorage.getItem('vault_access_token');
   
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
-    console.log("[VAULT] Token Injected: Auth Secured");
   }
+
+  // AUTO-DETECT MULTIPART: 
+  // If we are sending a File (FormData), Axios usually handles this, 
+  // but we ensure the header is clean for the browser to set the boundary.
+  if (config.data instanceof FormData) {
+    delete config.headers['Content-Type'];
+  }
+
   return config;
 }, (error) => Promise.reject(error));
 
 /**
  * RESPONSE INTERCEPTOR
- * Catch global errors (like 401 Unauthorized) in one place.
  */
 api.interceptors.response.use(
   (response) => response,
   (error) => {
+    // Check for timeout specifically
+    if (error.code === 'ECONNABORTED') {
+      console.error("[VAULT] Operation timed out. The file is likely too large for the current settings.");
+    }
+
     if (error.response?.status === 401) {
-      console.error("[VAULT] Unauthorized. Clearing Token.");
       localStorage.removeItem('vault_access_token');
-      // Logic to redirect to login would go here
+      localStorage.removeItem('vault_refresh_token');
+      // Force a reload to the login page if unauthorized
+      if (!window.location.pathname.includes('/login')) {
+        window.location.href = '/login';
+      }
     }
     return Promise.reject(error);
   }

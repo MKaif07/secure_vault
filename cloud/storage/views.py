@@ -15,6 +15,8 @@ from .serializers import UserSerializer, FileShareSerializer, AuditLogSerializer
 from django.utils import timezone
 from io import BytesIO
 from datetime import timedelta
+from django.http import StreamingHttpResponse
+
 
 class RegisterView(generics.CreateAPIView):
     queryset = User.objects.all()
@@ -367,26 +369,23 @@ class FileViewSet(viewsets.ModelViewSet):
     
     @action(detail=True, methods=['get'], url_path='download')
     def download(self, request, pk=None):
-        # 1. Fetch object using the secured queryset
-        # This already guarantees the user has basic access rights
+        # 1. Fetch object using the secured queryset (UNCHANGED)
         file_instance = self.get_object() 
         
-        # 2. Granular Access Check (The "Kill-Switch" Logic)
+        # 2. Granular Access Check (UNCHANGED)
         is_owner = file_instance.owner == request.user
-        
-        # Explicit check for active share
         active_share = FileShare.objects.filter(
             file=file_instance,
             shared_with=request.user,
             is_revoked=False
         ).filter(
             Q(expires_at__gt=timezone.now()) | Q(expires_at__isnull=True)
-        ).first() # Use .first() to check existence and retrieve token logic
+        ).first()
 
-        # If user is not the owner AND there's no valid share, block them
         if not is_owner and not active_share:
             return Response({"error": "ACCESS DENIED: Link revoked or expired"}, status=403)
-        # 3. Token Validation (If provided in URL params)
+        
+        # 3. Token Validation (UNCHANGED)
         provided_token = request.query_params.get('token')
         if provided_token and str(active_share.access_token) != provided_token:
             return Response({"error": "INVALID TOKEN"}, status=403)
@@ -395,32 +394,30 @@ class FileViewSet(viewsets.ModelViewSet):
         try:
             service = FileService()
             version_num = request.query_params.get('v')
-            # Ensure your service layer handles the file_instance properly
-            file_bytes, filename = service.download_and_decrypt(
+            
+            # This now returns a generator, not a bytes object
+            stream_generator, filename = service.download_and_decrypt(
                 request.user, 
                 file_instance.id, 
                 version_number=version_num
             )
 
-            if not file_bytes:
-                return Response({"error": "File payload missing"}, status=404)
+            if not stream_generator:
+                return Response({"error": "File payload missing or integrity failure"}, status=404)
 
-            try:
-                response = FileResponse(
-                    BytesIO(file_bytes),
-                    as_attachment=True,
-                    filename=filename
-                )
-                
-                print("TYPE:", type(file_bytes))
-                print("SIZE:", len(file_bytes) if file_bytes else 0)
-                return response
+            # 5. Create Streaming Response
+            # We use StreamingHttpResponse for 2GB+ files to avoid RAM exhaustion
+            response = StreamingHttpResponse(
+                stream_generator,
+                content_type='application/octet-stream'
+            )
+            
+            # Important headers for large file handling
+            response['Content-Disposition'] = f'attachment; filename="{filename}"'
+            # These allow the React frontend to see the filename header
+            response['Access-Control-Expose-Headers'] = 'Content-Disposition'
 
-            except Exception as e:
-                print("❌ RESPONSE ERROR:", str(e))
-                return Response({"error": str(e)}, status=500)
-
-            # Audit Log
+            # 6. Audit Logging (Move BEFORE return)
             AuditLog.objects.create(
                 user=request.user,
                 action='DOWNLOAD',
@@ -428,22 +425,11 @@ class FileViewSet(viewsets.ModelViewSet):
                 ip_address=request.META.get('REMOTE_ADDR')
             )
 
-            response = FileResponse(
-                BytesIO(file_bytes),
-                as_attachment=True,
-                filename=filename,
-                content_type='application/octet-stream'
-            )
-
-            response['Content-Disposition'] = f'attachment; filename="{filename}"'
-            response['Access-Control-Allow-Origin'] = '*'
-            response['Access-Control-Expose-Headers'] = 'Content-Disposition'
-
             return response
 
         except Exception as e:
-            # Don't leak specific system errors in production, but good for your debugging
-            return Response({"error": f"Decryption Error: {str(e)}"}, status=500)
+            print(f"❌ DOWNLOAD ACTION ERROR: {str(e)}")
+            return Response({"error": "Internal server error during streaming"}, status=500)
 
     def destroy(self, request, *args, **kwargs):
         instance = self.get_object()

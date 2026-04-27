@@ -193,3 +193,6 @@ CORS_ALLOW_HEADERS = [
 CORS_EXPOSE_HEADERS = [
     "Content-Disposition",  # IMPORTANT for downloads
 ]
+
+DATA_UPLOAD_MAX_MEMORY_SIZE = 2621440000 
+FILE_UPLOAD_MAX_MEMORY_SIZE = 0  # Forces all files to be written to disk temp, not RAM
