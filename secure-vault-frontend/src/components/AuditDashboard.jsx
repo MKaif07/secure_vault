@@ -61,6 +61,7 @@ export default function AuditDashboard() {
               {/* Action Badge */}
               <span className={`font-bold w-20 px-2 py-0.5 rounded-sm text-center ${
                 log.action === 'UPLOAD' ? 'bg-blue-900/40 text-blue-400' :
+                log.action === 'DELETE' ? 'bg-red-900/40 text-red-400' :
                 log.action === 'SHARE_REVOKED' ? 'bg-red-900/40 text-red-400' :
                 'bg-green-900/40 text-green-400'
               }`}>

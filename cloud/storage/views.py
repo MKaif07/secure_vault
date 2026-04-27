@@ -145,7 +145,7 @@ class ShareFileView(APIView):
             # LOG THIS ACTION
             AuditLog.objects.create(
                 user=request.user,
-                action='SHARE_CREATED',
+                action='SHARED',
                 file_id=str(file_id),
                 ip_address=request.META.get('REMOTE_ADDR')
             )
@@ -193,7 +193,7 @@ class RevokeShareView(APIView):
             # Log the revocation
             AuditLog.objects.create(
                 user=request.user,
-                action='SHARE_REVOKED',
+                action='DEL_SHARE',
                 file_id=str(file_id),
                 ip_address=request.META.get('REMOTE_ADDR')
             )
@@ -343,7 +343,7 @@ class FileViewSet(viewsets.ModelViewSet):
                     uploaded_file, 
                     existing_file_id=existing_file.id
                 )
-                action_type = 'VERSION_UPLOAD'
+                action_type = 'UPDATED'
             else:
                 file_record = service.upload_and_encrypt(request.user, uploaded_file)
                 action_type = 'UPLOAD'
@@ -445,6 +445,24 @@ class FileViewSet(viewsets.ModelViewSet):
             # Don't leak specific system errors in production, but good for your debugging
             return Response({"error": f"Decryption Error: {str(e)}"}, status=500)
 
+    def destroy(self, request, *args, **kwargs):
+        instance = self.get_object()
+        # 1. Store info for logging (since instance will be gone soon)
+        file_id = str(instance.id)
+        file_name = instance.display_name
+
+        # 2. Trigger the Audit Log
+        AuditLog.objects.create(
+            user=request.user,
+            # action='PERMANENT_DELETE',
+            action='DELETE',
+            file_id=file_id,
+            ip_address=request.META.get('REMOTE_ADDR')
+        )
+
+        # 3. Perform the actual deletion
+        return super().destroy(request, *args, **kwargs)
+    
     @action(detail=True, methods=['post'], url_path='share')
     def share(self, request, pk=None):
         file_obj = self.get_object()
@@ -468,7 +486,7 @@ class FileViewSet(viewsets.ModelViewSet):
             # Audit Logging
             AuditLog.objects.create(
                 user=request.user,
-                action='SHARE_CREATED',
+                action='SHARED',
                 file_id=str(file_obj.id),
                 ip_address=request.META.get('REMOTE_ADDR')
             )
@@ -501,7 +519,7 @@ class FileViewSet(viewsets.ModelViewSet):
 
             AuditLog.objects.create(
                 user=request.user,
-                action='SHARE_REVOKED',
+                action='SHARE',
                 file_id=str(share.file.id),
                 ip_address=request.META.get('REMOTE_ADDR')
             )
