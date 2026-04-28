@@ -82,7 +82,7 @@ const ShareModal = ({ file, isOpen, onClose }) => {
             <button
               type="submit"
               disabled={loading}
-              className="w-full bg-vault-accent text-black font-black py-3 uppercase hover:bg-white transition-all flex items-center justify-center gap-2"
+              className="w-full bg-gray-500 text-black font-black py-3 uppercase hover:bg-white transition-all flex items-center justify-center gap-2"
             >
               {loading ? (
                 "Encrypting Link..."

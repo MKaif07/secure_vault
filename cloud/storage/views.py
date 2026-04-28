@@ -131,33 +131,64 @@ class ShareFileView(APIView):
     permission_classes = [IsAuthenticated]
 
     def post(self, request, file_id):
-        target_email = request.data.get('email')
-        access_level = request.data.get('access_level', 'VIEWER')
-
         try:
+            # 1. Security Check: Ensure the user owns the file
             file_to_share = File.objects.get(id=file_id, owner=request.user)
-            recipient = User.objects.get(email=target_email)
+
+            # 2. Pass data to Serializer
+            serializer = FileShareSerializer(data=request.data)
+
+            if serializer.is_valid():
+                # Pass extra attributes that aren't in the request body (the file and the sharer)
+                share_instance = serializer.save(
+                    file=file_to_share, 
+                    shared_by=request.user
+                )
+
+                # 3. LOG THIS ACTION
+                AuditLog.objects.create(
+                    user=request.user,
+                    action='SHARED',
+                    file_id=str(file_id),
+                    ip_address=request.META.get('REMOTE_ADDR')
+                )
+
+                # 4. RETURN THE SERIALIZED DATA
+                # This will now include shared_with_username and shared_with_email
+                return Response(serializer.data, status=201)
             
-            share, created = FileShare.objects.update_or_create(
-                file=file_to_share,
-                shared_with=recipient,
-                defaults={'shared_by': request.user, 'access_level': access_level}
-            )
-
-            # LOG THIS ACTION
-            AuditLog.objects.create(
-                user=request.user,
-                action='SHARED',
-                file_id=str(file_id),
-                ip_address=request.META.get('REMOTE_ADDR')
-            )
-
-            return Response({"message": f"File shared with {target_email}"}, status=201)
+            return Response(serializer.errors, status=400)
 
         except File.DoesNotExist:
-            return Response({"error": "File not found or you don't own it"}, status=404)
-        except User.DoesNotExist:
-            return Response({"error": "User with this email not found"}, status=404)
+            return Response({"error": "File not found or unauthorized"}, status=404)
+
+        # target_email = request.data.get('email')
+        # access_level = request.data.get('access_level', 'VIEWER')
+
+        # try:
+        #     file_to_share = File.objects.get(id=file_id, owner=request.user)
+        #     recipient = User.objects.get(email=target_email)
+            
+        #     share, created = FileShare.objects.update_or_create(
+        #         file=file_to_share,
+        #         shared_with=recipient,
+        #         defaults={'shared_by': request.user, 'access_level': access_level}
+        #     )
+
+        #     # LOG THIS ACTION
+        #     AuditLog.objects.create(
+        #         user=request.user,
+        #         action='SHARED',
+        #         file_id=str(file_id),
+        #         ip_address=request.META.get('REMOTE_ADDR')
+        #     )
+
+        #     return Response({"message": f"File shared with {target_email}"}, status=201)
+
+        # except File.DoesNotExist:
+        #     return Response({"error": "File not found or you don't own it"}, status=404)
+        # except User.DoesNotExist:
+        #     return Response({"error": "User with this email not found"}, status=404)
         
 # class FileListView(generics.ListAPIView):
 #     permission_classes = [IsAuthenticated]

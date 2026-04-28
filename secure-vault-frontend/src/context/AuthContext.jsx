@@ -60,10 +60,10 @@ export const AuthProvider = ({ children }) => {
   };
 
   const logout = () => {
+    window.location.href = "/login";
     localStorage.removeItem("vault_access_token");
     localStorage.removeItem("vault_refresh_token");
     setUser(null);
-    window.location.href = "/login";
   };
 
   return (

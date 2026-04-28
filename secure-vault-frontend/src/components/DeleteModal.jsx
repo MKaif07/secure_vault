@@ -96,15 +96,15 @@ export default function DeleteModal({ file, isOpen, onClose }) {
         <div className="grid grid-cols-2 gap-4">
           <button
             onClick={onClose}
-            className="bg-green-600 text-black py-4 font-black uppercase text-sm hover:bg-green-400 transition-colors border-2 border-green-900"
+            className="bg-black text-gray-500 py-4 font-black uppercase text-sm hover:bg-green-800 hover:text-black transition-colors border-2 border-green-900"
           >
-            Cancel / Abort
+            Cancel
           </button>
           
           <button
             onClick={() => deleteFileMutation.mutate()}
             disabled={deleteFileMutation.isPending}
-            className="bg-red-600 text-white py-4 font-black uppercase text-sm hover:bg-red-500 transition-colors border-2 border-red-900 flex items-center justify-center gap-2"
+            className="bg-black text-white py-4 font-black uppercase text-sm hover:bg-red-800 transition-colors border-2 border-red-900 flex items-center justify-center gap-2"
           >
             {deleteFileMutation.isPending ? (
               <Loader2 className="animate-spin" size={20} />

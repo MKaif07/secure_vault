@@ -102,9 +102,12 @@ class FileShareSerializer(serializers.ModelSerializer):
     # We accept email from the frontend, but it's not a field in the model
     email = serializers.EmailField(write_only=True)
     
+    shared_with_username = serializers.ReadOnlyField(source='shared_with.username')
+    shared_with_email = serializers.ReadOnlyField(source='shared_with.email')
+
     class Meta:
         model = FileShare
-        fields = ['email', 'expires_at', 'access_token', 'is_revoked']
+        fields = ['id', 'email', 'shared_with_username', 'shared_with_email', 'expires_at', 'access_token', 'is_revoked']
         read_only_fields = ['access_token', 'is_revoked']
 
     def validate_email(self, value):
